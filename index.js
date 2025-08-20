@@ -131,7 +131,14 @@ app.post('/recipes', auth, upload.single('image'), async (req, res) => {
     const { title, description } = req.body;
     let { ingredients, steps } = req.body;
 
-    // normalize arrays (support JSON string, CSV, or newline lists)
+    if (!title || !description) {
+      return res.status(400).json({ error: "Title and description required" });
+    }
+
+    if (!req.file?.buffer) {
+      return res.status(400).json({ error: "Image is required" }); // 🔑 enforce
+    }
+
     const normArr = (v, splitter) => {
       if (Array.isArray(v)) return v;
       if (typeof v !== 'string') return [];
@@ -142,16 +149,11 @@ app.post('/recipes', auth, upload.single('image'), async (req, res) => {
     ingredients = normArr(ingredients, ',');
     steps       = normArr(steps, '\n');
 
-    let imageUrl = null;
-    if (req.file?.buffer) {
-      const uploaded = await uploadToCloudinary(req.file.buffer, 'mern-food');
-      imageUrl = uploaded.secure_url;
-    }
-
+    const uploaded = await uploadToCloudinary(req.file.buffer, 'mern-food');
     const rec = await Recipe.create({
       title, description, ingredients, steps,
-      image: imageUrl,
-      author: req.user.id, // 🔑 link to creator so /auth/me shows the right count
+      image: uploaded.secure_url, // 🔑 now guaranteed
+      author: req.user.id,
     });
     res.status(201).json(rec);
   } catch (e) {
@@ -160,14 +162,20 @@ app.post('/recipes', auth, upload.single('image'), async (req, res) => {
   }
 });
 
+// PUT /recipes/:id
 app.put('/recipes/:id', auth, upload.single('image'), async (req, res) => {
   try {
     const rec = await Recipe.findById(req.params.id);
     if (!rec) return res.status(404).json({ error: 'Not found' });
-    if (String(rec.author) !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    // ✅ allow if author OR admin
+    if (String(rec.author) !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
     const { title, description } = req.body;
     let { ingredients, steps } = req.body;
+
     const normArr = (v, splitter) => {
       if (Array.isArray(v)) return v;
       if (typeof v !== 'string') return undefined;
@@ -196,11 +204,17 @@ app.put('/recipes/:id', auth, upload.single('image'), async (req, res) => {
   }
 });
 
+// DELETE /recipes/:id
 app.delete('/recipes/:id', auth, async (req, res) => {
   try {
     const rec = await Recipe.findById(req.params.id);
     if (!rec) return res.status(404).json({ error: 'Not found' });
-    if (String(rec.author) !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    // ✅ allow if author OR admin
+    if (String(rec.author) !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     await rec.deleteOne();
     res.json({ ok: true });
   } catch {
