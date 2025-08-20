@@ -131,7 +131,6 @@ app.post('/recipes', auth, upload.single('image'), async (req, res) => {
     const { title, description } = req.body;
     let { ingredients, steps } = req.body;
 
-    // normalize arrays (support JSON string, CSV, or newline lists)
     const normArr = (v, splitter) => {
       if (Array.isArray(v)) return v;
       if (typeof v !== 'string') return [];
@@ -151,7 +150,7 @@ app.post('/recipes', auth, upload.single('image'), async (req, res) => {
     const rec = await Recipe.create({
       title, description, ingredients, steps,
       image: imageUrl,
-      author: req.user.id, // 🔑 link to creator so /auth/me shows the right count
+      author: req.user.id,
     });
     res.status(201).json(rec);
   } catch (e) {
@@ -164,7 +163,11 @@ app.put('/recipes/:id', auth, upload.single('image'), async (req, res) => {
   try {
     const rec = await Recipe.findById(req.params.id);
     if (!rec) return res.status(404).json({ error: 'Not found' });
-    if (String(rec.author) !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    // Allow edit if user is the author OR an admin
+    if (String(rec.author) !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
     const { title, description } = req.body;
     let { ingredients, steps } = req.body;
@@ -200,10 +203,16 @@ app.delete('/recipes/:id', auth, async (req, res) => {
   try {
     const rec = await Recipe.findById(req.params.id);
     if (!rec) return res.status(404).json({ error: 'Not found' });
-    if (String(rec.author) !== req.user.id) return res.status(403).json({ error: 'Forbidden' });
+
+    // Allow deletion if user is the author OR an admin
+    if (String(rec.author) !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     await rec.deleteOne();
     res.json({ ok: true });
-  } catch {
+  } catch (err) {
+    console.error(err);
     res.status(500).json({ error: 'Delete failed' });
   }
 });
