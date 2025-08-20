@@ -1,15 +1,11 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
-const recipeSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true },
-    description: { type: String, required: true },
-    ingredients: [{ type: String }],
-    steps: [{ type: String }],
-    image: { type: String, required: [true, "Image is required"] }, // 🔑 required
-    author: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  },
-  { timestamps: true }
-);
+const userSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  email: { type: String, required: true, unique: true },
+  passwordHash: { type: String, required: true },
+  role: { type: String, enum: ['user', 'admin'], default: 'user' },
+}, { timestamps: true });
 
-module.exports = mongoose.model("Recipe", recipeSchema);
+// ✅ Prevent OverwriteModelError
+module.exports = mongoose.models.User || mongoose.model('User', userSchema);
